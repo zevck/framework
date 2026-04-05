@@ -57,6 +57,7 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${ULTRALIGHT_INCLUDE_DIR}"
+    "${ULTRALIGHT_SDK_ROOT}/shaders/generated/headers"
 )
 
 # Link directories for Ultralight

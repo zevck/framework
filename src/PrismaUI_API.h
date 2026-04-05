@@ -114,6 +114,11 @@ namespace PRISMA_UI_API {
         // Register a callback to receive JavaScript console messages from a view.
         // Pass nullptr to unregister.
         virtual void RegisterConsoleCallback(PrismaView view, ConsoleMessageCallback callback) noexcept = 0;
+
+        // Create a view with optional GPU-accelerated rendering.
+        // GPU acceleration uses the game's D3D11 device for rendering instead of software bitmap
+        virtual PrismaView CreateView(const char* htmlPath, OnDomReadyCallback onDomReadyCallback,
+                                      bool gpuAccelerated) noexcept = 0;
     };
 
     // Maps interface types to InterfaceVersion enum values.

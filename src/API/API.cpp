@@ -223,6 +223,28 @@ bool PluginAPI::PrismaUIInterface::HasAnyActiveFocus() noexcept
 	return PrismaUI::ViewManager::HasAnyActiveFocus();
 }
 
+PrismaView PluginAPI::PrismaUIInterface::CreateView(const char* htmlPath, PRISMA_UI_API::OnDomReadyCallback onDomReadyCallback, bool gpuAccelerated) noexcept
+{
+	if (!htmlPath) {
+		return 0;
+	}
+
+	std::function<void(PrismaUI::Core::PrismaViewId)> domReadyWrapper = nullptr;
+	if (onDomReadyCallback) {
+		domReadyWrapper = [onDomReadyCallback](PrismaUI::Core::PrismaViewId viewId) {
+			SKSE::GetTaskInterface()->AddTask([callback = onDomReadyCallback, id = viewId]() {
+				callback(id);
+			});
+		};
+	}
+
+	auto id = PrismaUI::ViewManager::Create(htmlPath, domReadyWrapper);
+	if (id && gpuAccelerated) {
+		PrismaUI::ViewManager::SetGPUAcceleration(id, true);
+	}
+	return id;
+}
+
 void PluginAPI::PrismaUIInterface::RegisterConsoleCallback(PrismaView view, PRISMA_UI_API::ConsoleMessageCallback callback) noexcept
 {
 	if (!view) {

@@ -369,6 +369,21 @@ namespace PrismaUI::ViewManager {
         return false;
     }
 
+    void SetGPUAcceleration(const Core::PrismaViewId& viewId, bool enabled) {
+        std::unique_lock lock(viewsMutex);
+        auto it = views.find(viewId);
+        if (it != views.end()) {
+            if (it->second->ultralightView) {
+                logger::warn("SetGPUAcceleration: View [{}] already created. GPU acceleration must be set before the view loads.", viewId);
+            } else {
+                it->second->useGPUAcceleration = enabled;
+                logger::debug("SetGPUAcceleration: {} for view [{}]", enabled ? "Enabled" : "Disabled", viewId);
+            }
+        } else {
+            logger::warn("SetGPUAcceleration: View ID [{}] not found.", viewId);
+        }
+    }
+
     void SetScrollingPixelSize(const Core::PrismaViewId& viewId, int pixelSize) {
         std::unique_lock lock(viewsMutex);
         auto it = views.find(viewId);

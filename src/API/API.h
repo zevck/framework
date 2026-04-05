@@ -47,6 +47,7 @@ public:
 		// IVPrismaUI2
 
 		virtual void RegisterConsoleCallback(PrismaView view, PRISMA_UI_API::ConsoleMessageCallback callback) noexcept override;
+		virtual PrismaView CreateView(const char* htmlPath, PRISMA_UI_API::OnDomReadyCallback onDomReadyCallback, bool gpuAccelerated) noexcept override;
 
 	private:
 		unsigned long apiTID = 0;

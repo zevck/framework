@@ -1,6 +1,7 @@
 ﻿#include "ViewRenderer.h"
 
 #include "Core.h"
+#include "GPUDriverD3D11.h"
 #include "InputHandler.h"
 #include "Inspector.h"
 
@@ -39,14 +40,16 @@ namespace PrismaUI::ViewRenderer {
     void RenderSingleView(std::shared_ptr<Core::PrismaView> viewData) {
         if (!viewData || !viewData->ultralightView) return;
 
+        // GPU-accelerated views have no BitmapSurface - rendering is done via GPUDriver
         Surface* surface_base = viewData->ultralightView->surface();
-        if (!surface_base) return;
+        if (surface_base) {
+            // Software-rendered view
+            BitmapSurface* surface = static_cast<BitmapSurface*>(surface_base);
 
-        BitmapSurface* surface = static_cast<BitmapSurface*>(surface_base);
-
-        if (viewData->isLoadingFinished && !surface->dirty_bounds().IsEmpty()) {
-            CopyBitmapToBuffer(viewData);
-            surface->ClearDirtyBounds();
+            if (viewData->isLoadingFinished && !surface->dirty_bounds().IsEmpty()) {
+                CopyBitmapToBuffer(viewData);
+                surface->ClearDirtyBounds();
+            }
         }
 
         // Render inspector view if visible
@@ -271,8 +274,13 @@ namespace PrismaUI::ViewRenderer {
             std::shared_lock lock(viewsMutex);
             viewsToDraw.reserve(views.size());
             for (const auto& pair : views) {
-                if (pair.second && !pair.second->isHidden.load() && !pair.second->pendingResourceRelease.load() &&
-                    pair.second->textureView) {
+                if (!pair.second || pair.second->isHidden.load() || pair.second->pendingResourceRelease.load())
+                    continue;
+                // Include views with either a bitmap texture or a GPU render target
+                bool hasBitmapTexture = (pair.second->textureView != nullptr);
+                bool hasGPURenderTarget = (pair.second->ultralightView &&
+                    gpuDriver && !pair.second->ultralightView->render_target().is_empty);
+                if (hasBitmapTexture || hasGPURenderTarget) {
                     viewsToDraw.push_back(pair.second);
                 }
             }
@@ -319,6 +327,39 @@ namespace PrismaUI::ViewRenderer {
     }
 
     void DrawSingleTexture(std::shared_ptr<Core::PrismaView> viewData) {
+        // Try GPU-accelerated render target first
+        if (viewData && viewData->ultralightView && gpuDriver) {
+            auto rt = viewData->ultralightView->render_target();
+            if (!rt.is_empty && rt.texture_id != 0) {
+                auto* srv = gpuDriver->GetTextureSRV(rt.texture_id);
+                if (srv) {
+                    // Use UV coords from render target (texture may be padded)
+                    RECT sourceRect = {
+                        (LONG)(rt.uv_coords.left * rt.texture_width),
+                        (LONG)(rt.uv_coords.top * rt.texture_height),
+                        (LONG)(rt.uv_coords.right * rt.texture_width),
+                        (LONG)(rt.uv_coords.bottom * rt.texture_height)
+                    };
+                    DirectX::SimpleMath::Vector2 position(0.0f, 0.0f);
+                    spriteBatch->Draw(srv, position, &sourceRect, DirectX::Colors::White, 0.f,
+                                      DirectX::SimpleMath::Vector2::Zero, 1.0f, DirectX::SpriteEffects_None, 0.f);
+
+                    // Draw inspector overlay if visible (still bitmap-based)
+                    if (viewData->inspectorVisible.load() && viewData->inspectorTextureView &&
+                        viewData->inspectorTextureWidth > 0 && viewData->inspectorTextureHeight > 0) {
+                        DirectX::SimpleMath::Vector2 inspectorPos(viewData->inspectorPosX, viewData->inspectorPosY);
+                        RECT inspectorSourceRect = {0, 0, (long)viewData->inspectorTextureWidth,
+                                                    (long)viewData->inspectorTextureHeight};
+                        spriteBatch->Draw(viewData->inspectorTextureView, inspectorPos, &inspectorSourceRect,
+                                          DirectX::Colors::White, 0.f, DirectX::SimpleMath::Vector2::Zero, 1.0f,
+                                          DirectX::SpriteEffects_None, 0.f);
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Fallback: software-rendered bitmap texture
         if (!viewData || !viewData->textureView || viewData->textureWidth == 0 || viewData->textureHeight == 0) return;
 
         // Draw main view

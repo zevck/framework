@@ -17,6 +17,9 @@
 #include <windowsx.h>
 #include <wrl/client.h>
 
+// Forward declaration for GPU driver
+namespace PrismaUI { class GPUDriverD3D11; }
+
 #include <atomic>
 #include <cstdint>
 #include <future>
@@ -63,6 +66,7 @@ namespace PrismaUI::Core {
         std::function<void(const PrismaViewId&)> domReadyCallback;
         std::function<void(PrismaViewId, PRISMA_UI_API::ConsoleMessageLevel, const std::string&)> consoleMessageCallback;
         int scrollingPixelSize = 28;
+        bool useGPUAcceleration = false;
         std::atomic<bool> isPaused = false;
         int order = 0;
         std::atomic<bool> inspectorVisible = false;
@@ -115,6 +119,7 @@ namespace PrismaUI::Core {
     extern std::atomic<bool> rendererInitFailed;
 
     extern RefPtr<Renderer> renderer;
+    extern std::unique_ptr<PrismaUI::GPUDriverD3D11> gpuDriver;
     extern ID3D11Device* d3dDevice;
     extern ID3D11DeviceContext* d3dContext;
     extern HWND hWnd;
