@@ -3,6 +3,7 @@
 #include <eh.h>  // For _set_se_translator
 
 #include "Communication.h"
+#include "GPUDriverD3D11.h"
 #include "InputHandler.h"
 #include "Inspector.h"
 #include "Listeners.h"
@@ -98,6 +99,7 @@ namespace PrismaUI::Core {
     static std::unique_ptr<MyUltralightLogger> ultralightLogger;
 
     RefPtr<Renderer> renderer;
+    std::unique_ptr<PrismaUI::GPUDriverD3D11> gpuDriver;
     ID3D11Device* d3dDevice = nullptr;
     ID3D11DeviceContext* d3dContext = nullptr;
     HWND hWnd = nullptr;
@@ -137,6 +139,21 @@ namespace PrismaUI::Core {
                     config.resource_path_prefix = "resources/";
                     plat.set_config(config);
 
+                    // Try to get the D3D device for GPU-accelerated rendering
+                    auto* rm = RE::BSGraphics::Renderer::GetSingleton();
+                    if (rm) {
+                        auto rtd = rm->GetRuntimeData();
+                        auto* dev = reinterpret_cast<ID3D11Device*>(rtd.forwarder);
+                        auto* ctx = reinterpret_cast<ID3D11DeviceContext*>(rtd.context);
+                        if (dev && ctx) {
+                            if (!d3dDevice) d3dDevice = dev;
+                            if (!d3dContext) d3dContext = ctx;
+                            gpuDriver = std::make_unique<PrismaUI::GPUDriverD3D11>(dev, ctx);
+                            plat.set_gpu_driver(gpuDriver.get());
+                            logger::info("GPU driver set for accelerated rendering.");
+                        }
+                    }
+
                     renderer = Renderer::Create();
                     if (!renderer) {
                         logger::critical("Failed to create Ultralight Renderer!");
@@ -144,7 +161,7 @@ namespace PrismaUI::Core {
                     } else {
                         logger::info(
                             "Ultralight Platform configured and Renderer created on UI "
-                            "thread.");
+                            "thread. (GPU={})", gpuDriver ? "yes" : "no");
                     }
                 } catch (const std::exception& e) {
                     logger::critical(
@@ -390,7 +407,7 @@ namespace PrismaUI::Core {
                     }
 
                     ViewConfig view_config;
-                    view_config.is_accelerated = false;
+                    view_config.is_accelerated = (gpuDriver != nullptr && viewData->useGPUAcceleration);
                     view_config.is_transparent = true;
                     view_config.initial_focus = false;
                     view_config.enable_images = true;
@@ -487,6 +504,35 @@ namespace PrismaUI::Core {
 
         for (const auto& viewData : viewsToCheck) {
             UpdateSingleTextureFromBuffer(viewData);
+        }
+        // Execute GPU driver command list (renders Ultralight content to GPU textures)
+        if (gpuDriver && gpuDriver->HasCommandsPending()) {
+            // Save and restore game's D3D state around Ultralight rendering
+            ID3D11RenderTargetView* backupRTV = nullptr;
+            ID3D11DepthStencilView* backupDSV = nullptr;
+            D3D11_VIEWPORT backupVP;
+            UINT numVP = 1;
+            ID3D11RasterizerState* backupRS = nullptr;
+            ID3D11BlendState* backupBS = nullptr;
+            FLOAT backupBF[4];
+            UINT backupSM = 0;
+
+            d3dContext->OMGetRenderTargets(1, &backupRTV, &backupDSV);
+            d3dContext->RSGetViewports(&numVP, &backupVP);
+            d3dContext->RSGetState(&backupRS);
+            d3dContext->OMGetBlendState(&backupBS, backupBF, &backupSM);
+
+            gpuDriver->DrawCommandList();
+
+            // Restore game state
+            d3dContext->OMSetRenderTargets(1, &backupRTV, backupDSV);
+            d3dContext->RSSetViewports(1, &backupVP);
+            d3dContext->RSSetState(backupRS);
+            d3dContext->OMSetBlendState(backupBS, backupBF, backupSM);
+            if (backupRTV) backupRTV->Release();
+            if (backupDSV) backupDSV->Release();
+            if (backupRS) backupRS->Release();
+            if (backupBS) backupBS->Release();
         }
 
         DrawViews();

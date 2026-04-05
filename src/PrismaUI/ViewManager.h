@@ -36,6 +36,7 @@ namespace PrismaUI::ViewManager {
     bool IsValid(const Core::PrismaViewId& viewId);
     void SetScrollingPixelSize(const Core::PrismaViewId& viewId, int pixelSize);
     int GetScrollingPixelSize(const Core::PrismaViewId& viewId);
+    void SetGPUAcceleration(const Core::PrismaViewId& viewId, bool enabled);  // Internal — use V2 CreateView overload
     void SetOrder(const Core::PrismaViewId& viewId, int order);
     int GetOrder(const Core::PrismaViewId& viewId);
 
